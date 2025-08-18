@@ -1,179 +1,156 @@
 <!DOCTYPE html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <title>취득세 계산기</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  </head>
-  <body class="bg-gray-100">
-    <div id="root"></div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>주택 취득세 계산기</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    .card { background:#fff; border-radius:18px; box-shadow:0 12px 30px rgba(0,0,0,.12); }
+    .label { font-weight:600; color:#374151 }
+    .pill  { border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-100">
+  <main class="max-w-2xl mx-auto px-5 py-10">
+    <section class="card p-7">
+      <h1 class="text-2xl font-bold text-center text-indigo-700 mb-6">
+        주택 취득세 계산기 🏠
+      </h1>
 
-    <!-- React 코드 -->
-    <script type="text/babel">
-      function TaxCalculator() {
-        const { useState } = React;
-        const [houseCount, setHouseCount] = useState("1");
-        const [existingRegion, setExistingRegion] = useState("비조정지역");
-        const [newRegion, setNewRegion] = useState("비조정지역");
-        const [price, setPrice] = useState("");
-        const [area, setArea] = useState("85이하");
-        const [result, setResult] = useState(null);
+      <!-- 주택 수 -->
+      <div class="mb-4">
+        <label for="house" class="label block mb-2">주택 수</label>
+        <select id="house" class="pill w-full" onchange="toggleRegionBoxes()">
+          <option value="1">1주택</option>
+          <option value="2">2주택</option>
+          <option value="3">3주택 이상</option>
+        </select>
+      </div>
 
-        const handlePriceChange = (e) => {
-          const rawValue = e.target.value.replace(/,/g, "");
-          if (!isNaN(rawValue)) {
-            setPrice(Number(rawValue).toLocaleString());
-          }
-        };
+      <!-- 기존/추가 주택 지역 (2주택일 때만 노출) -->
+      <div id="regions" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" style="display:none">
+        <div>
+          <label class="label block mb-2">기존 주택 지역</label>
+          <select id="existRegion" class="pill w-full">
+            <option value="non">비조정지역</option>
+            <option value="reg">조정지역</option>
+          </select>
+        </div>
+        <div>
+          <label class="label block mb-2">추가 주택 지역</label>
+          <select id="addRegion" class="pill w-full">
+            <option value="non">비조정지역</option>
+            <option value="reg">조정지역</option>
+          </select>
+        </div>
+      </div>
 
-        const calculateTax = () => {
-          let rawPrice = Number(price.replace(/,/g, ""));
-          let acquisitionTax = 0;
-          let educationTax = 0;
-          let ruralTax = 0;
+      <!-- 취득가액 -->
+      <div class="mb-4">
+        <label for="amount" class="label block mb-2">취득가액 (원)</label>
+        <input id="amount" type="text" class="pill w-full" placeholder="예: 885,000,000" oninput="formatAmount(this)"/>
+      </div>
 
-          const basicRate = (p) => {
-            if (p <= 600000000) return 0.01;
-            if (p <= 900000000) return ((p * (2 / 3)) - 3) / 100;
-            return 0.03;
-          };
+      <!-- 면적 -->
+      <div class="mb-6">
+        <span class="label block mb-2">면적</span>
+        <label class="mr-6">
+          <input type="radio" name="area" value="small" checked> 85㎡ 이하
+        </label>
+        <label>
+          <input type="radio" name="area" value="large"> 85㎡ 초과
+        </label>
+      </div>
 
-          if (houseCount === "1") {
-            acquisitionTax = rawPrice * basicRate(rawPrice);
-          } else if (houseCount === "2") {
-            if (newRegion === "조정지역") {
-              acquisitionTax = rawPrice * 0.08;
-            } else {
-              acquisitionTax = rawPrice * basicRate(rawPrice);
-            }
-          } else if (houseCount === "3") {
-            acquisitionTax = rawPrice * 0.12;
-          }
+      <button onclick="calculate()" class="w-full py-3 rounded-xl text-white font-bold bg-indigo-600 hover:bg-indigo-700 transition">
+        계산하기
+      </button>
 
-          educationTax = acquisitionTax * 0.1;
-          if (area === "85초과") {
-            ruralTax = acquisitionTax * 0.2;
-          }
+      <!-- 결과 -->
+      <div id="resultCard" class="mt-7 p-5 rounded-xl bg-indigo-50" style="display:none">
+        <h2 class="text-lg font-bold text-indigo-700 mb-3">계산 결과</h2>
+        <div class="space-y-1 text-gray-800">
+          <p id="lineAcq"></p>
+          <p id="lineEdu"></p>
+          <p id="lineRural"></p>
+          <hr class="my-3">
+          <p id="lineTotal" class="text-red-600 font-bold"></p>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">
+          * 6~9억 구간 기본세율: 세율(%) = 취득가액(억원) × 2/3 − 3<br>
+          * 교육세는 취득세의 10%, 농특세는 85㎡ 초과 시 취득세의 20%로 가정.
+        </p>
+      </div>
+    </section>
+  </main>
 
-          setResult({
-            acquisitionTax,
-            educationTax,
-            ruralTax,
-            total: acquisitionTax + educationTax + ruralTax,
-          });
-        };
+  <script>
+    // 천 단위 콤마
+    function formatAmount(el){
+      const raw = el.value.replace(/[^\d]/g, "");
+      el.value = raw ? Number(raw).toLocaleString() : "";
+    }
 
-        return (
-          <div className="flex justify-center items-center min-h-screen p-6">
-            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl">
-              <h2 className="text-2xl font-bold text-center text-blue-700 mb-6">
-                주택 취득세 계산기 🏠
-              </h2>
+    function toggleRegionBoxes(){
+      const house = document.getElementById('house').value;
+      document.getElementById('regions').style.display = (house === '2') ? 'grid' : 'none';
+    }
 
-              {/* 주택 수 */}
-              <div className="mb-4">
-                <label className="block mb-2 font-medium">주택 수</label>
-                <select
-                  value={houseCount}
-                  onChange={(e) => setHouseCount(e.target.value)}
-                  className="w-full p-3 rounded-lg border"
-                >
-                  <option value="1">1주택</option>
-                  <option value="2">2주택</option>
-                  <option value="3">3주택 이상</option>
-                </select>
-              </div>
+    // 1주택 기본세율(소수, 예: 0.029)
+    function basicRate(priceWon){
+      if (priceWon <= 600_000_000) return 0.01;
+      if (priceWon <= 900_000_000){
+        const eok = priceWon / 100_000_000;                 // 억원 단위
+        let pct = eok * (2/3) - 3;                          // % 단위 (1~3 사이)
+        if (pct < 1) pct = 1;
+        if (pct > 3) pct = 3;
+        return pct / 100;                                   // 소수로 변환
+      }
+      return 0.03;
+    }
 
-              {houseCount === "2" && (
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block mb-2 font-medium">기존 주택 지역</label>
-                    <select
-                      value={existingRegion}
-                      onChange={(e) => setExistingRegion(e.target.value)}
-                      className="w-full p-3 rounded-lg border"
-                    >
-                      <option value="비조정지역">비조정지역</option>
-                      <option value="조정지역">조정지역</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-medium">추가 주택 지역</label>
-                    <select
-                      value={newRegion}
-                      onChange={(e) => setNewRegion(e.target.value)}
-                      className="w-full p-3 rounded-lg border"
-                    >
-                      <option value="비조정지역">비조정지역</option>
-                      <option value="조정지역">조정지역</option>
-                    </select>
-                  </div>
-                </div>
-              )}
+    function calculate(){
+      const amountStr = document.getElementById('amount').value.replace(/,/g,"");
+      if(!amountStr){ alert("취득가액을 입력하세요."); return; }
+      const price = Number(amountStr);
 
-              <div className="mb-4">
-                <label className="block mb-2 font-medium">취득가액 (원)</label>
-                <input
-                  type="text"
-                  value={price}
-                  onChange={handlePriceChange}
-                  placeholder="예: 600,000,000"
-                  className="w-full p-3 rounded-lg border"
-                />
-              </div>
+      const house = document.getElementById('house').value;
+      const area = document.querySelector('input[name="area"]:checked').value;
+      const addRegion = document.getElementById('addRegion')?.value || 'non';
 
-              <div className="mb-4">
-                <label className="block mb-2 font-medium">면적</label>
-                <div className="flex gap-6">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      value="85이하"
-                      checked={area === "85이하"}
-                      onChange={(e) => setArea(e.target.value)}
-                    />
-                    85㎡ 이하
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      value="85초과"
-                      checked={area === "85초과"}
-                      onChange={(e) => setArea(e.target.value)}
-                    />
-                    85㎡ 초과
-                  </label>
-                </div>
-              </div>
-
-              <button
-                onClick={calculateTax}
-                className="w-full py-3 rounded-xl text-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md"
-              >
-                계산하기
-              </button>
-
-              {result && (
-                <div className="mt-6 p-6 bg-blue-50 rounded-xl shadow-md space-y-2">
-                  <h3 className="text-xl font-bold text-blue-600">계산 결과</h3>
-                  <p>취득세: {result.acquisitionTax.toLocaleString()} 원</p>
-                  <p>교육세: {result.educationTax.toLocaleString()} 원</p>
-                  <p>농특세: {result.ruralTax.toLocaleString()} 원</p>
-                  <hr />
-                  <p className="text-lg font-bold text-red-600">
-                    총 세액: {result.total.toLocaleString()} 원
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        );
+      // 취득세율 결정
+      let acqRate;
+      if (house === '1'){
+        acqRate = basicRate(price);
+      } else if (house === '2'){
+        // 추가 주택 지역이 조정지역이면 중과, 비조정이면 기본세율
+        acqRate = (addRegion === 'reg') ? 0.08 : basicRate(price);
+      } else { // 3주택 이상
+        acqRate = 0.12;
       }
 
-      ReactDOM.createRoot(document.getElementById("root")).render(<TaxCalculator />);
-    </script>
-  </body>
+      const eduRate   = acqRate * 0.10;                    // 교육세 = 취득세의 10%
+      const ruralRate = (area === 'large') ? acqRate*0.20 : 0; // 농특세 = 면적 85초과면 취득세의 20%
+
+      // 세액 계산 (원)
+      const acqTax   = Math.round(price * acqRate);
+      const eduTax   = Math.round(price * eduRate);
+      const ruralTax = Math.round(price * ruralRate);
+      const total    = acqTax + eduTax + ruralTax;
+
+      // 출력(세율은 % 표시)
+      document.getElementById('lineAcq').textContent =
+        `취득세: ${acqTax.toLocaleString()} 원 (${(acqRate*100).toFixed(2)}% 적용)`;
+      document.getElementById('lineEdu').textContent =
+        `교육세: ${eduTax.toLocaleString()} 원 (취득세의 10% → ${(eduRate*100).toFixed(2)}%)`;
+      document.getElementById('lineRural').textContent =
+        `농특세: ${ruralTax.toLocaleString()} 원 ${area==='large' ? `(취득세의 20% → ${(ruralRate*100).toFixed(2)}%)` : `(0%)`}`;
+      document.getElementById('lineTotal').textContent =
+        `총 세액: ${total.toLocaleString()} 원`;
+
+      document.getElementById('resultCard').style.display = 'block';
+    }
+  </script>
+</body>
 </html>
