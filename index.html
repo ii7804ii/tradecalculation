@@ -1,68 +1,16 @@
-<div class="container">
-  <h2>부동산 취득세 계산기</h2>
-
-  <!-- 거래 금액 -->
-  <div class="input-box">
-    <input type="text" id="amount" placeholder="0" oninput="formatNumber(this)">
-    <span class="unit">원</span>
-  </div>
-
-  <!-- 전용면적 -->
-  <div class="input-box">
-    <label for="area">전용면적:</label>
-    <select id="area">
-      <option value="small">85m² 이하</option>
-      <option value="large">85m² 초과</option>
-    </select>
-  </div>
-
-  <!-- 주택 보유 수 -->
-  <div class="input-box">
-    <label for="houseCount">보유 주택 수:</label>
-    <select id="houseCount" onchange="toggleRegionOption()">
-      <option value="1">1주택</option>
-      <option value="2">2주택</option>
-      <option value="3">3주택 이상</option>
-    </select>
-  </div>
-
-  <!-- 조정지역 여부 (2주택일 경우만 보임) -->
-  <div class="input-box" id="regionBox" style="display:none;">
-    <label for="region">기존 주택 지역:</label>
-    <select id="region">
-      <option value="nonregulated">비조정지역</option>
-      <option value="regulated">조정지역</option>
-    </select>
-  </div>
-
-  <!-- 계산 버튼 -->
-  <button class="calculate-btn" onclick="calculate()">계산하기</button>
-
-  <!-- 결과 -->
-  <div class="result" id="result">취득세: -</div>
-  <div class="note">* 세율은 단일 예시 기준</div>
-</div>
+<div class="result" id="result">취득세: -</div>
+<div class="breakdown" id="breakdown"></div>
+<div class="note">* 세율은 조건에 따라 자동 계산됩니다.</div>
 
 <script>
-  function formatNumber(input) {
-    let value = input.value.replace(/,/g, '');
-    if (!isNaN(value) && value !== '') {
-      input.value = Number(value).toLocaleString();
-    }
-  }
-
-  function toggleRegionOption() {
-    let houseCount = document.getElementById("houseCount").value;
-    let regionBox = document.getElementById("regionBox");
-    regionBox.style.display = (houseCount === "2") ? "block" : "none";
-  }
-
   function calculate() {
     let amount = document.getElementById('amount').value.replace(/,/g, '');
     let area = document.getElementById('area').value;
     let houseCount = document.getElementById('houseCount').value;
-    let region = document.getElementById('region') ? document.getElementById('region').value : null;
+    let region1 = document.getElementById('region1') ? document.getElementById('region1').value : null;
+    let region2 = document.getElementById('region2') ? document.getElementById('region2').value : null;
     let resultDiv = document.getElementById('result');
+    let breakdownDiv = document.getElementById('breakdown');
 
     if (!amount) {
       alert("거래 금액을 입력하세요.");
@@ -71,11 +19,67 @@
 
     amount = Number(amount);
 
-    // 👉 여기서부터는 조건별 세율 계산 로직을 구현해야 함
-    // 지금은 일단 샘플 계산 (기본 1% 적용)
-    let taxRate = 0.01; 
-    let tax = amount * taxRate;
+    // ----------------------
+    // 세율 초기화
+    let 취득세율 = 0;
+    let 교육세율 = 0;
+    let 농특세율 = 0;
+    // ----------------------
 
-    resultDiv.innerText = "취득세: " + Math.round(tax).toLocaleString() + " 원";
+    // ✅ 1주택
+    if (houseCount === "1") {
+      if (amount <= 600000000) {
+        취득세율 = 0.01;
+        교육세율 = 0.001;
+      } else if (amount <= 900000000) {
+        // (취득가액×2/3)-3% 공식 적용
+        취득세율 = (amount * (2/3) / amount) - 0.03;
+        if (취득세율 < 0.01) 취득세율 = 0.01; // 최소 1%
+        if (취득세율 > 0.03) 취득세율 = 0.03; // 최대 3%
+        교육세율 = 취득세율 * 0.1; // 비율 동일하게 증가
+      } else {
+        취득세율 = 0.03;
+        교육세율 = 0.003;
+      }
+    }
+    // ✅ 2주택 (간단 적용: 추가주택이 조정지역이면 중과)
+    else if (houseCount === "2") {
+      if (region2 === "regulated") {
+        취득세율 = 0.08;
+      } else {
+        취득세율 = 0.01;
+      }
+      교육세율 = 취득세율 * 0.1;
+    }
+    // ✅ 3주택 이상
+    else {
+      취득세율 = 0.12;
+      교육세율 = 취득세율 * 0.1; // 보통 10% 부과
+    }
+
+    // ✅ 농특세 (85m² 초과 시 0.2% 추가)
+    if (area === "large") {
+      농특세율 = 0.002;
+    }
+
+    // ----------------------
+    // 세금 계산
+    let 취득세 = amount * 취득세율;
+    let 교육세 = amount * 교육세율;
+    let 농특세 = amount * 농특세율;
+    let 합계 = 취득세 + 교육세 + 농특세;
+    // ----------------------
+
+    // 결과 출력
+    resultDiv.innerText = "총 취득세: " + Math.round(합계).toLocaleString() + " 원";
+
+    breakdownDiv.innerHTML = `
+      <hr>
+      <p>📌 세부 내역</p>
+      <p>취득세 (${(취득세율*100).toFixed(2)}%) : ${Math.round(취득세).toLocaleString()} 원</p>
+      <p>지방교육세 (${(교육세율*100).toFixed(2)}%) : ${Math.round(교육세).toLocaleString()} 원</p>
+      <p>농어촌특별세 (${(농특세율*100).toFixed(2)}%) : ${Math.round(농특세).toLocaleString()} 원</p>
+      <p><b>합계 : ${Math.round(합계).toLocaleString()} 원</b></p>
+    `;
   }
 </script>
